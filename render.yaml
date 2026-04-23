@@ -1,0 +1,25 @@
+# Render Deployment Configuration for Laravel with React/Vite
+
+# This file is used to configure the deployment of a Laravel application with React/Vite on Render.
+
+env:
+  NODE_ENV: production
+  APP_ENV: production
+  APP_KEY: your_app_key_here
+  APP_URL: https://your-app.onrender.com
+
+# Build command to compile the frontend
+buildCommand: |
+  cd frontend && npm install && npm run build
+
+# Start command to run the backend
+startCommand: |
+  php artisan migrate --force
+  php artisan serve --host=0.0.0.0 --port=8000
+
+# Health check path for Render
+healthCheckPath: /health
+
+# Add any other necessary configurations for your application here.
+
+# If using a database, add database configuration here.
