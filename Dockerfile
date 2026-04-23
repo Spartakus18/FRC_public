@@ -1,51 +1,55 @@
-# Dockerfile for Laravel 9 Application
-
-## Base Stage
+# --- Étape de base (Dépendances PHP) ---
 FROM php:8.0-fpm AS base
 
-# Set working directory
 WORKDIR /var/www
 
-# Install system dependencies
+# Installation des dépendances système (Debian)
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
     libzip-dev \
-    npm \
+    zip \
+    unzip \
+    git \
  && docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install gd zip \
+ && docker-php-ext-install gd zip pdo_mysql \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-## Dependencies Installation
-COPY ./composer.json ./
-COPY ./composer.lock ./
-RUN composer install --no-dev --optimize-autoloader
+# Copie uniquement les fichiers de dépendances pour optimiser le cache
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader
 
-# Copy application code
-COPY . .
-
-## Vite Assets Build Stage
+# --- Étape Vite (Assets) ---
 FROM node:16 AS vite
-WORKDIR /var/www
-COPY --from=base /var/www .
-
-# Install npm dependencies and build assets
+WORKDIR /app
+COPY . .
 RUN npm install && npm run build
 
-## Production Stage
-FROM php:8.0-fpm-alpine AS production
+# --- Étape Production ---
+FROM php:8.0-fpm AS production
 WORKDIR /var/www
-COPY --from=base /var/www .
-COPY --from=vite /var/www/public/dist ./public/dist
 
-# Set proper permissions for Laravel
+# On réinstalle les extensions PHP nécessaires ici aussi si on change d'image,
+# MAIS le plus simple est de repartir de l'image 'base' pour garder la compatibilité.
+COPY --from=base /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
+COPY --from=base /usr/local/lib/php/extensions /usr/local/lib/php/extensions
+# (Ou plus simplement, utilise l'image 'base' comme base de prod)
+
+COPY . .
+COPY --from=base /var/www/vendor ./vendor
+COPY --from=vite /app/public/build ./public/build 
+
+# Finalisation de l'autoloader
+COPY --from=base /usr/bin/composer /usr/bin/composer
+RUN composer dump-autoload --optimize --no-dev
+
+# Permissions
 RUN chown -R www-data:www-data storage bootstrap/cache
 RUN chmod -R 775 storage bootstrap/cache
 
-# Laravel configuration
 EXPOSE 9000
 CMD ["php-fpm"]
