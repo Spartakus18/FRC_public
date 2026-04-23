@@ -3,7 +3,7 @@ FROM php:8.1-fpm AS base
 
 WORKDIR /var/www
 
-# Installation des dépendances système (Excel, Avatars, Sanctum)
+# Installation des dépendances système (Postgres, Excel, Avatars)
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
@@ -11,25 +11,23 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libmagickwand-dev \
     libicu-dev \
+    libpq-dev \
     zip \
     unzip \
     git \
     curl \
  && docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install gd zip pdo_mysql bcmath intl \
+ && docker-php-ext-install gd zip pdo_pgsql bcmath intl \
  && rm -rf /var/lib/apt/lists/*
 
 # Installation de Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Configuration pour éviter les erreurs de build sur Render
 ENV COMPOSER_MEMORY_LIMIT=-1
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Copie des fichiers de dépendances
 COPY composer.json composer.lock* ./
 
-# Installation des packages PHP
 RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction --ignore-platform-reqs
 
 # --- ÉTAPE 2 : Compilation des Assets (Vite) ---
@@ -43,31 +41,26 @@ FROM php:8.1-fpm AS production
 
 WORKDIR /var/www
 
-# Réinstallation des extensions PHP nécessaires en prod
+# Réinstallation des extensions PHP (Postgres est inclus ici)
 RUN apt-get update && apt-get install -y \
-    libpng-dev libjpeg-dev libzip-dev libicu-dev zip unzip \
-    && docker-php-ext-install gd zip pdo_mysql bcmath intl \
+    libpng-dev libjpeg-dev libzip-dev libpq-dev libicu-dev zip unzip \
+    && docker-php-ext-install gd zip pdo_pgsql bcmath intl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copie du code source complet
 COPY . .
 
-# On récupère les éléments des étapes précédentes
 COPY --from=base /var/www/vendor ./vendor
 COPY --from=vite-stage /app/public/build ./public/build
 COPY --from=base /usr/bin/composer /usr/bin/composer
 
-# Optimisation de l'autoloader
 RUN composer dump-autoload --optimize --no-dev
 
-# Gestion des permissions pour Laravel
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# --- SCRIPT DE DÉMARRAGE (Spécial Plan Gratuit) ---
+# --- CONFIGURATION RENDER ---
 EXPOSE 10000
 
-# Création d'un script pour lancer la migration et le serveur ensemble
 RUN echo '#!/bin/sh\n\
 php artisan migrate --force\n\
 php artisan serve --host=0.0.0.0 --port=10000' > /start.sh
