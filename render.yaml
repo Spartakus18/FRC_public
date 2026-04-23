@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: frc-app
+    runtime: docker
+    region: iad
+    plan: free
+    buildCommand: composer install && npm install && npm run build
+    startCommand: php artisan migrate --force && php-fpm
+    healthCheckPath: /\
+    healthCheckInterval: 300
+    routes:
+      - path: /\
+        matchType: prefix
+    envVars:
+      - key: APP_NAME
+        value: FRC
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        sync: false
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: mysql
+      - key: CACHE_DRIVER
+        value: file
+      - key: SESSION_DRIVER
+        value: cookie
